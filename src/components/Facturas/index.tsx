@@ -42,7 +42,12 @@ const Facturas: React.FC = () => {
               name,
               barcode
             ),
-            item_discount:discounts (
+            line_discount:discounts!invoice_items_discount_id_fkey (
+              name,
+              type,
+              value
+            ),
+            item_discount:discounts!invoice_items_item_discount_id_fkey (
               name,
               type,
               value
@@ -93,9 +98,10 @@ const Facturas: React.FC = () => {
     const searchLower = searchTerm.toLowerCase();
     const customerName = (invoice as any).customer?.name?.toLowerCase() || '';
     const customerDocument = (invoice as any).customer?.document?.toLowerCase() || '';
+    const fiscalNumber = invoice.fiscal_number?.toLowerCase() || '';
     return customerName.includes(searchLower) || 
            customerDocument.includes(searchLower) ||
-           invoice.id.toLowerCase().includes(searchLower);
+           fiscalNumber.includes(searchLower);
   });
 
   const getStatusBadgeClass = (status: string) => {
@@ -123,6 +129,29 @@ const Facturas: React.FC = () => {
         return 'Reembolsada';
       default:
         return status;
+    }
+  };
+
+  const getFiscalDocumentTypeText = (type: string) => {
+    switch (type) {
+      case 'CREDITO_FISCAL':
+        return 'Crédito Fiscal';
+      case 'CONSUMO':
+        return 'Consumo';
+      case 'NOTA_DEBITO':
+        return 'Nota de Débito';
+      case 'NOTA_CREDITO':
+        return 'Nota de Crédito';
+      case 'COMPRAS':
+        return 'Compras';
+      case 'GASTOS_MENORES':
+        return 'Gastos Menores';
+      case 'REGIMENES_ESPECIALES':
+        return 'Regímenes Especiales';
+      case 'GUBERNAMENTAL':
+        return 'Gubernamental';
+      default:
+        return type;
     }
   };
 
@@ -157,7 +186,8 @@ const Facturas: React.FC = () => {
         <table className="w-full">
           <thead>
             <tr className="bg-gray-100">
-              <th className="p-3 text-left">Factura</th>
+              <th className="p-3 text-left">Número</th>
+              <th className="p-3 text-left">Tipo</th>
               <th className="p-3 text-left">Cliente</th>
               <th className="p-3 text-left">Fecha</th>
               <th className="p-3 text-left">Subtotal</th>
@@ -170,7 +200,7 @@ const Facturas: React.FC = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="p-3 text-center">
+                <td colSpan={9} className="p-3 text-center">
                   <div className="flex justify-center items-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
                     <span className="ml-2">Cargando facturas...</span>
@@ -179,7 +209,7 @@ const Facturas: React.FC = () => {
               </tr>
             ) : filteredInvoices.length === 0 ? (
               <tr>
-                <td colSpan={8} className="p-3 text-center text-gray-500">
+                <td colSpan={9} className="p-3 text-center text-gray-500">
                   No se encontraron facturas
                 </td>
               </tr>
@@ -189,8 +219,13 @@ const Facturas: React.FC = () => {
                   <td className="p-3">
                     <div className="flex items-center">
                       <FileText size={16} className="mr-2 text-gray-400" />
-                      <span className="font-medium">{invoice.id.slice(0, 8)}...</span>
+                      <span className="font-medium">{invoice.fiscal_number}</span>
                     </div>
+                  </td>
+                  <td className="p-3">
+                    <span className="text-sm">
+                      {getFiscalDocumentTypeText(invoice.fiscal_document_type)}
+                    </span>
                   </td>
                   <td className="p-3">
                     <div>

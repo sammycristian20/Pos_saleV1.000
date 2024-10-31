@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Product, CartItem, Client, Sale, PaymentDetails, Discount } from '../components/POS/types';
+import { Product, CartItem, Client, Sale, PaymentDetails, Discount, FiscalDocumentType } from '../components/POS/types';
 import { useAuth } from './AuthContext';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -8,6 +8,7 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const TAX_RATE = 0.18; // 18% ITBIS
+const DEFAULT_CLIENT_ID = '00000000-0000-0000-0000-000000000000'; // Consumidor Final
 
 interface POSContextType {
   cart: CartItem[];
@@ -117,8 +118,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!user) throw new Error('Usuario no autenticado');
     if (cart.length === 0) throw new Error('El carrito está vacío');
 
+    // Determine fiscal document type based on client type
+    let fiscalDocumentType: FiscalDocumentType | undefined;
+    if (selectedClient) {
+      fiscalDocumentType = selectedClient.client_type === 'BUSINESS' 
+        ? 'CREDITO_FISCAL' 
+        : 'CONSUMO';
+    } else {
+      fiscalDocumentType = 'CONSUMO'; // Default for walk-in customers
+    }
+
     const sale: Sale = {
-      customer_id: selectedClient?.id,
+      customer_id: selectedClient?.id || DEFAULT_CLIENT_ID,
       subtotal: cartSubtotal,
       tax_amount: cartTax,
       total_amount: cartTotal,
@@ -127,6 +138,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       payment_method: paymentDetails.method,
       amount_paid: paymentDetails.amount_tendered,
       change_amount: paymentDetails.change_amount,
+      fiscal_document_type: fiscalDocumentType,
       items: cart.map(item => ({
         product_id: item.id,
         quantity: item.quantity,
@@ -155,7 +167,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           customer:customers (
             name,
             document,
-            document_type
+            document_type,
+            client_type
           ),
           payment:payments (
             payment_method,

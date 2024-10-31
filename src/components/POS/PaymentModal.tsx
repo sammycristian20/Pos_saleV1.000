@@ -1,15 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, CreditCard, DollarSign, Banknote, FileText } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 import { usePOS } from '../../contexts/POSContext';
-import { PaymentDetails } from './types';
+import { PaymentDetails, FiscalDocumentType } from './types';
 import ReceiptModal from './ReceiptModal';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface PaymentModalProps {
   onClose: () => void;
 }
 
+interface FiscalSequence {
+  id: string;
+  document_type: FiscalDocumentType;
+  current_prefix: string;
+  last_number: number;
+}
+
 const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
-  const { cartTotal, processSale } = usePOS();
+  const { cartTotal, processSale, selectedClient } = usePOS();
   const [paymentMethod, setPaymentMethod] = useState<PaymentDetails['method']>('CASH');
   const [amountTendered, setAmountTendered] = useState<string>(cartTotal.toString());
   const [referenceNumber, setReferenceNumber] = useState('');
@@ -17,8 +29,49 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [completedSale, setCompletedSale] = useState<any>(null);
+  const [fiscalSequences, setFiscalSequences] = useState<FiscalSequence[]>([]);
+  const [selectedFiscalType, setSelectedFiscalType] = useState<FiscalDocumentType | ''>('');
 
-  const changeAmount = Math.max(0, Number(amountTendered) - cartTotal);
+  useEffect(() => {
+    fetchFiscalSequences();
+  }, []);
+
+  useEffect(() => {
+    // Only set CONSUMO as default if there's no selected client
+    if (!selectedClient) {
+      setSelectedFiscalType('CONSUMO');
+    }
+  }, [selectedClient]);
+
+  const fetchFiscalSequences = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('fiscal_sequences')
+        .select('*')
+        .eq('active', true)
+        .order('document_type');
+
+      if (error) throw error;
+      setFiscalSequences(data || []);
+    } catch (err) {
+      console.error('Error fetching fiscal sequences:', err);
+      setError('Error al cargar los tipos de comprobantes fiscales');
+    }
+  };
+
+  const getFiscalTypeLabel = (type: FiscalDocumentType): string => {
+    const labels: Record<FiscalDocumentType, string> = {
+      'CREDITO_FISCAL': 'Crédito Fiscal (31)',
+      'CONSUMO': 'Consumo (32)',
+      'NOTA_DEBITO': 'Nota de Débito (33)',
+      'NOTA_CREDITO': 'Nota de Crédito (34)',
+      'COMPRAS': 'Compras (41)',
+      'GASTOS_MENORES': 'Gastos Menores (43)',
+      'REGIMENES_ESPECIALES': 'Regímenes Especiales (44)',
+      'GUBERNAMENTAL': 'Gubernamental (45)'
+    };
+    return labels[type] || type;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +79,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
     setProcessing(true);
 
     try {
+      if (!selectedFiscalType) {
+        throw new Error('Debe seleccionar un tipo de comprobante fiscal');
+      }
+
       if (paymentMethod === 'CASH' && Number(amountTendered) < cartTotal) {
         throw new Error('El monto recibido es menor al total');
       }
@@ -33,9 +90,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
       const paymentDetails: PaymentDetails = {
         method: paymentMethod,
         amount_tendered: Number(amountTendered),
-        change_amount: changeAmount,
+        change_amount: Math.max(0, Number(amountTendered) - cartTotal),
         reference_number: referenceNumber || undefined,
-        authorization_code: authorizationCode || undefined
+        authorization_code: authorizationCode || undefined,
+        fiscal_document_type: selectedFiscalType
       };
 
       const result = await processSale(paymentDetails);
@@ -79,6 +137,29 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
         )}
 
         <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Tipo de Comprobante Fiscal
+            </label>
+            <select
+              value={selectedFiscalType}
+              onChange={(e) => setSelectedFiscalType(e.target.value as FiscalDocumentType)}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+              disabled={processing}
+            >
+              <option value="">Seleccionar tipo de comprobante</option>
+              {fiscalSequences.map((seq) => (
+                <option 
+                  key={seq.id} 
+                  value={seq.document_type}
+                >
+                  {getFiscalTypeLabel(seq.document_type)}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Método de Pago
@@ -158,6 +239,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                   min={cartTotal}
                   step="0.01"
                   required
+                  disabled={processing}
                 />
               </div>
 
@@ -166,7 +248,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                   Cambio
                 </label>
                 <div className="text-xl font-bold text-green-600">
-                  ${changeAmount.toFixed(2)}
+                  ${Math.max(0, Number(amountTendered) - cartTotal).toFixed(2)}
                 </div>
               </div>
             </>
@@ -184,6 +266,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                   onChange={(e) => setReferenceNumber(e.target.value)}
                   className="w-full p-2 border rounded-lg"
                   required
+                  disabled={processing}
                 />
               </div>
               <div className="mb-4">
@@ -196,6 +279,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                   onChange={(e) => setAuthorizationCode(e.target.value)}
                   className="w-full p-2 border rounded-lg"
                   required
+                  disabled={processing}
                 />
               </div>
             </>
@@ -203,7 +287,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
 
           <button
             type="submit"
-            disabled={processing}
+            disabled={processing || !selectedFiscalType}
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg flex items-center justify-center hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400"
           >
             {processing ? (

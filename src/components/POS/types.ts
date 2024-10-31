@@ -1,5 +1,15 @@
 import { Product } from './types';
 
+export type FiscalDocumentType = 
+  | 'CREDITO_FISCAL'
+  | 'CONSUMO'
+  | 'NOTA_DEBITO'
+  | 'NOTA_CREDITO'
+  | 'COMPRAS'
+  | 'GASTOS_MENORES'
+  | 'REGIMENES_ESPECIALES'
+  | 'GUBERNAMENTAL';
+
 export interface Discount {
   id: string;
   name: string;
@@ -20,6 +30,16 @@ export interface CartItem extends Product {
   discount_amount?: number;
 }
 
+export interface PaymentDetails {
+  method: 'CASH' | 'CARD' | 'TRANSFER' | 'CREDIT';
+  amount_tendered: number;
+  change_amount: number;
+  reference_number?: string;
+  authorization_code?: string;
+  fiscal_document_type: FiscalDocumentType;
+  fiscal_number: string;
+}
+
 export interface Sale {
   customer_id?: string;
   subtotal: number;
@@ -30,6 +50,8 @@ export interface Sale {
   payment_method: 'CASH' | 'CARD' | 'TRANSFER' | 'CREDIT';
   amount_paid: number;
   change_amount: number;
+  fiscal_document_type: FiscalDocumentType;
+  fiscal_number: string;
   items: {
     product_id: string;
     quantity: number;

@@ -1,6 +1,21 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Home, Users, DollarSign, Users as ClientsIcon, CreditCard, Package, Settings, BarChart, Tag, LogOut, ShoppingCart, FileText, Percent } from 'lucide-react';
+import { 
+  Home, 
+  Users, 
+  DollarSign, 
+  Users as ClientsIcon, 
+  CreditCard, 
+  Package, 
+  Settings, 
+  BarChart, 
+  Tag, 
+  LogOut, 
+  ShoppingCart, 
+  FileText, 
+  Percent,
+  Hash
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -51,6 +66,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Link to="/facturas" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
             <FileText className="mr-3" size={20} />
             Facturas
+          </Link>
+          <Link to="/secuencias" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
+            <Hash className="mr-3" size={20} />
+            Secuencias Fiscales
           </Link>
           <Link to="/cuentas-por-pagar" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
             <CreditCard className="mr-3" size={20} />
