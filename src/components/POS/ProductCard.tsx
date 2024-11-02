@@ -10,13 +10,13 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
   return (
-    <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
-      <div className="w-full h-[300px] bg-gray-100 flex items-center justify-center">
+    <div className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200 w-full flex flex-col">
+      <div className="aspect-square bg-gray-100 flex items-center justify-center">
         {product.photos && product.photos.length > 0 ? (
           <img
             src={product.photos[0].photo_url}
             alt={product.name}
-            className="w-[300px] h-[300px] object-contain"
+            className="w-full h-full object-contain p-2"
             onError={(e) => {
               (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300x300?text=No+Image';
             }}
@@ -27,11 +27,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
           </div>
         )}
       </div>
-      <div className="p-4">
-        <h3 className="font-medium text-gray-900 truncate" title={product.name}>
+      <div className="p-4 flex flex-col flex-grow">
+        <h3 className="font-medium text-gray-900 truncate mb-1" title={product.name}>
           {product.name}
         </h3>
-        <div className="mt-2 flex justify-between items-center">
+        <div className="mt-auto flex justify-between items-end">
           <div>
             <p className="text-lg font-bold text-blue-600">
               {formatCurrency(product.price)}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Plus, Edit, Trash2, AlertCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, AlertCircle, AlertTriangle } from 'lucide-react';
 import type { FiscalSequence } from './types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -18,6 +18,13 @@ const documentTypes = {
   'GUBERNAMENTAL': 'Gubernamental (45)'
 };
 
+interface SequenceStatus {
+  available: boolean;
+  warning?: string;
+  message?: string;
+  remaining?: number;
+}
+
 const Secuencias: React.FC = () => {
   const [sequences, setSequences] = useState<FiscalSequence[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -25,11 +32,15 @@ const Secuencias: React.FC = () => {
     document_type: '',
     current_prefix: '',
     last_number: 0,
+    range_from: 0,
+    range_to: 9999999999,
+    range_alert_threshold: 100,
     active: true
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sequenceStatuses, setSequenceStatuses] = useState<Record<string, SequenceStatus>>({});
 
   useEffect(() => {
     fetchSequences();
@@ -45,6 +56,16 @@ const Secuencias: React.FC = () => {
 
       if (error) throw error;
       setSequences(data || []);
+
+      // Check availability for each sequence
+      const statuses: Record<string, SequenceStatus> = {};
+      for (const sequence of data || []) {
+        const { data: statusData } = await supabase.rpc('check_sequence_availability', {
+          p_document_type: sequence.document_type
+        });
+        statuses[sequence.document_type] = statusData;
+      }
+      setSequenceStatuses(statuses);
     } catch (err) {
       console.error('Error fetching sequences:', err);
       setError('Error al cargar las secuencias fiscales');
@@ -57,7 +78,8 @@ const Secuencias: React.FC = () => {
     const { name, value, type } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : 
+              type === 'number' ? parseInt(value) || 0 : value,
       ...(name === 'document_type' ? { current_prefix: `E${value.slice(0, 2)}` } : {})
     }));
   };
@@ -71,8 +93,20 @@ const Secuencias: React.FC = () => {
       setError('El prefijo debe tener el formato E## (ejemplo: E31)');
       return false;
     }
-    if (formData.last_number < 0 || formData.last_number > 9999999999) {
-      setError('El último número debe estar entre 0 y 9999999999');
+    if (formData.range_from < 0 || formData.range_to > 9999999999) {
+      setError('El rango debe estar entre 0 y 9999999999');
+      return false;
+    }
+    if (formData.range_from >= formData.range_to) {
+      setError('El inicio del rango debe ser menor que el fin');
+      return false;
+    }
+    if (formData.last_number < formData.range_from || formData.last_number > formData.range_to) {
+      setError('El último número debe estar dentro del rango especificado');
+      return false;
+    }
+    if (formData.range_alert_threshold < 1) {
+      setError('El umbral de alerta debe ser mayor a 0');
       return false;
     }
     return true;
@@ -92,6 +126,9 @@ const Secuencias: React.FC = () => {
           .update({
             current_prefix: formData.current_prefix,
             last_number: formData.last_number,
+            range_from: formData.range_from,
+            range_to: formData.range_to,
+            range_alert_threshold: formData.range_alert_threshold,
             active: formData.active
           })
           .eq('id', editingId);
@@ -120,6 +157,9 @@ const Secuencias: React.FC = () => {
       document_type: sequence.document_type,
       current_prefix: sequence.current_prefix,
       last_number: sequence.last_number,
+      range_from: sequence.range_from,
+      range_to: sequence.range_to,
+      range_alert_threshold: sequence.range_alert_threshold,
       active: sequence.active
     });
     setEditingId(sequence.id);
@@ -151,6 +191,9 @@ const Secuencias: React.FC = () => {
       document_type: '',
       current_prefix: '',
       last_number: 0,
+      range_from: 0,
+      range_to: 9999999999,
+      range_alert_threshold: 100,
       active: true
     });
     setShowForm(false);
@@ -224,8 +267,50 @@ const Secuencias: React.FC = () => {
                 onChange={handleInputChange}
                 className="w-full p-2 border rounded"
                 required
+                min={formData.range_from}
+                max={formData.range_to}
+                disabled={loading}
+              />
+            </div>
+            <div>
+              <label className="block mb-2">Inicio del Rango</label>
+              <input
+                type="number"
+                name="range_from"
+                value={formData.range_from}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                required
                 min="0"
                 max="9999999999"
+                disabled={loading}
+              />
+            </div>
+            <div>
+              <label className="block mb-2">Fin del Rango</label>
+              <input
+                type="number"
+                name="range_to"
+                value={formData.range_to}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                required
+                min="0"
+                max="9999999999"
+                disabled={loading}
+              />
+            </div>
+            <div>
+              <label className="block mb-2">Umbral de Alerta</label>
+              <input
+                type="number"
+                name="range_alert_threshold"
+                value={formData.range_alert_threshold}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                required
+                min="1"
+                title="Número de secuencias restantes para mostrar alerta"
                 disabled={loading}
               />
             </div>
@@ -272,19 +357,32 @@ const Secuencias: React.FC = () => {
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-3 text-left">Tipo de Comprobante</th>
-              <th className="p-3 text-left">Prefijo</th>
-              <th className="p-3 text-left">Último Número</th>
-              <th className="p-3 text-left">Estado</th>
-              <th className="p-3 text-left">Acciones</th>
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Tipo de Comprobante
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Prefijo
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Último Número
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Rango
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Estado
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Acciones
+              </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="bg-white divide-y divide-gray-200">
             {loading && !showForm ? (
               <tr>
-                <td colSpan={5} className="p-3 text-center">
+                <td colSpan={6} className="px-6 py-4 text-center">
                   <div className="flex justify-center items-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
                     <span className="ml-2">Cargando secuencias...</span>
@@ -293,43 +391,69 @@ const Secuencias: React.FC = () => {
               </tr>
             ) : sequences.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-3 text-center text-gray-500">
+                <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
                   No hay secuencias configuradas
                 </td>
               </tr>
             ) : (
-              sequences.map((sequence) => (
-                <tr key={sequence.id} className="border-t">
-                  <td className="p-3">{documentTypes[sequence.document_type as keyof typeof documentTypes]}</td>
-                  <td className="p-3">{sequence.current_prefix}</td>
-                  <td className="p-3">{sequence.last_number.toString().padStart(10, '0')}</td>
-                  <td className="p-3">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      sequence.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {sequence.active ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleEdit(sequence)}
-                        className="text-blue-500 hover:text-blue-700"
-                        disabled={loading}
-                      >
-                        <Edit size={20} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(sequence.id)}
-                        className="text-red-500 hover:text-red-700"
-                        disabled={loading}
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              sequences.map((sequence) => {
+                const status = sequenceStatuses[sequence.document_type];
+                return (
+                  <tr key={sequence.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {documentTypes[sequence.document_type as keyof typeof documentTypes]}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {sequence.current_prefix}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {sequence.last_number.toString().padStart(10, '0')}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {sequence.range_from} - {sequence.range_to}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex flex-col space-y-1">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          sequence.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {sequence.active ? 'Activo' : 'Inactivo'}
+                        </span>
+                        {status?.warning && (
+                          <span className="inline-flex items-center text-xs text-yellow-600">
+                            <AlertTriangle size={12} className="mr-1" />
+                            {status.warning}
+                          </span>
+                        )}
+                        {status?.message && (
+                          <span className="inline-flex items-center text-xs text-red-600">
+                            <AlertCircle size={12} className="mr-1" />
+                            {status.message}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleEdit(sequence)}
+                          className="text-blue-500 hover:text-blue-700"
+                          disabled={loading}
+                        >
+                          <Edit size={20} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(sequence.id)}
+                          className="text-red-500 hover:text-red-700"
+                          disabled={loading}
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

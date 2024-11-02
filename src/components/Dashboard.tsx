@@ -5,7 +5,12 @@ import { formatCurrency } from '../utils/format';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true
+  }
+});
 
 interface DashboardStats {
   totalSales: number;
@@ -23,13 +28,14 @@ const Dashboard: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchDashboardStats();
-  }, []);
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_RETRIES = 3;
 
   const fetchDashboardStats = async () => {
     try {
+      setLoading(true);
+      setError(null);
+
       // Get total customers
       const { count: customersCount, error: customersError } = await supabase
         .from('customers')
@@ -55,12 +61,31 @@ const Dashboard: React.FC = () => {
         totalCustomers: customersCount || 0,
         totalRevenue: totalRevenue
       });
+      
+      setRetryCount(0); // Reset retry count on success
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
-      setError('Error al cargar las estadísticas');
+      setError('Error al cargar las estadísticas. Por favor, intente de nuevo.');
+      
+      // Implement retry logic
+      if (retryCount < MAX_RETRIES) {
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          fetchDashboardStats();
+        }, Math.pow(2, retryCount) * 1000); // Exponential backoff
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchDashboardStats();
+  }, []);
+
+  const handleRetry = () => {
+    setRetryCount(0);
+    fetchDashboardStats();
   };
 
   if (loading) {
@@ -75,6 +100,12 @@ const Dashboard: React.FC = () => {
     return (
       <div className="p-4 bg-red-100 border-l-4 border-red-500 text-red-700">
         <p>{error}</p>
+        <button
+          onClick={handleRetry}
+          className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+        >
+          Reintentar
+        </button>
       </div>
     );
   }
@@ -109,12 +140,6 @@ const Dashboard: React.FC = () => {
           description="Ingresos totales"
         />
       </div>
-
-      {/* Aquí podríamos agregar más secciones como:
-          - Gráfico de ventas por mes
-          - Productos más vendidos
-          - Últimas ventas
-          - etc. */}
     </div>
   );
 };

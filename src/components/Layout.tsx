@@ -15,7 +15,8 @@ import {
   FileText, 
   Percent,
   Hash,
-  Calculator
+  Calculator,
+  Upload
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -39,7 +40,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <p className="text-sm text-gray-600">Bienvenido,</p>
           <p className="font-semibold truncate">{user?.email}</p>
         </div>
-        <nav className="mt-5">
+        <nav className="mt-5 space-y-1">
           <Link to="/" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
             <Home className="mr-3" size={20} />
             Dashboard
@@ -83,6 +84,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Link to="/inventario" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
             <Package className="mr-3" size={20} />
             Inventario
+          </Link>
+          <Link to="/carga-masiva" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
+            <Upload className="mr-3" size={20} />
+            Carga Masiva
           </Link>
           <Link to="/categorias" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
             <Tag className="mr-3" size={20} />

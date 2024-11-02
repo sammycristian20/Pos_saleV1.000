@@ -5,7 +5,12 @@ import type { CashRegisterSummary } from '../components/CashRegister/types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true
+  }
+});
 
 interface CashRegisterContextType {
   register: CashRegisterSummary | null;
@@ -23,7 +28,10 @@ export function CashRegisterProvider({ children }: { children: React.ReactNode }
   const { user } = useAuth();
 
   const fetchRegisterStatus = async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     
     try {
       setLoading(true);
@@ -34,10 +42,10 @@ export function CashRegisterProvider({ children }: { children: React.ReactNode }
       });
 
       if (fetchError) throw fetchError;
-      setRegister(data[0] || null);
+      setRegister(data?.[0] || null);
     } catch (err) {
       console.error('Error fetching register status:', err);
-      setError('Error al verificar el estado de la caja');
+      setError('Error al verificar el estado de la caja. Por favor, intente de nuevo.');
     } finally {
       setLoading(false);
     }

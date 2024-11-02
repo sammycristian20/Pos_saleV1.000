@@ -7,7 +7,7 @@ import Cart from './Cart';
 import ClientSearch from './ClientSearch';
 import PaymentModal from './PaymentModal';
 import TransactionList from '../CashRegister/TransactionList';
-import { Sale } from './types';
+import { Sale, Product } from './types';
 import { Receipt, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
@@ -21,6 +21,9 @@ const POS: React.FC = () => {
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const { register, loading, error, refreshRegister } = useCashRegister();
   const [showTransactions, setShowTransactions] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const handleSaleComplete = async (sale: any) => {
     try {
@@ -96,9 +99,17 @@ const POS: React.FC = () => {
           <div className="flex-1 pr-6 overflow-y-auto">
             <div className="mb-6">
               <h1 className="text-3xl font-bold mb-6">Punto de Venta</h1>
-              <ProductSearch />
+              <ProductSearch 
+                onProductsFound={setProducts}
+                onLoading={setSearchLoading}
+                onError={setSearchError}
+              />
             </div>
-            <ProductGrid />
+            <ProductGrid 
+              products={products}
+              loading={searchLoading}
+              error={searchError}
+            />
           </div>
 
           {/* Cart Section */}

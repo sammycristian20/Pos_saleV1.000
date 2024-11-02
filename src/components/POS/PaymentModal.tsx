@@ -5,6 +5,7 @@ import { usePOS } from '../../contexts/POSContext';
 import { useCashRegister } from '../../contexts/CashRegisterContext';
 import { formatCurrency } from '../../utils/format';
 import type { FiscalDocumentType } from './types';
+import Big from 'big.js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -60,14 +61,26 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onComplete }) => {
         throw new Error('No hay una caja abierta para recibir pagos en efectivo');
       }
 
-      const tenderedAmount = Number(amountTendered);
-      if (isNaN(tenderedAmount) || tenderedAmount < cartTotal) {
+      const tenderedAmount = new Big(amountTendered || '0');
+      const total = new Big(cartTotal);
+
+      if (tenderedAmount.lt(total)) {
         throw new Error('El monto recibido es menor al total');
       }
     }
 
     if ((paymentMethod === 'CARD' || paymentMethod === 'TRANSFER') && !referenceNumber) {
       throw new Error('El número de referencia es requerido');
+    }
+  };
+
+  const calculateChange = (): string => {
+    try {
+      const tenderedAmount = new Big(amountTendered || '0');
+      const total = new Big(cartTotal);
+      return tenderedAmount.minus(total).toFixed(2);
+    } catch (err) {
+      return '0.00';
     }
   };
 
@@ -82,10 +95,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onComplete }) => {
       // Validate payment details
       validatePayment();
 
+      const tenderedAmount = new Big(amountTendered || '0');
+      const changeAmount = new Big(calculateChange());
+
       const paymentDetails = {
         method: paymentMethod,
-        amount_tendered: Number(amountTendered),
-        change_amount: Math.max(0, Number(amountTendered) - cartTotal),
+        amount_tendered: Number(tenderedAmount),
+        change_amount: Number(changeAmount),
         reference_number: referenceNumber || undefined,
         authorization_code: authorizationCode || undefined,
         fiscal_document_type: selectedFiscalType,
@@ -284,7 +300,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onComplete }) => {
                   Cambio
                 </label>
                 <div className="text-xl font-bold text-green-600">
-                  {formatCurrency(Math.max(0, Number(amountTendered) - cartTotal))}
+                  {formatCurrency(Number(calculateChange()))}
                 </div>
               </div>
             </>

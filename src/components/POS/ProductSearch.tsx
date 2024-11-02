@@ -1,51 +1,102 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Search } from 'lucide-react';
 import { Product } from './types';
-import { usePOS } from '../../contexts/POSContext';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const ProductSearch: React.FC = () => {
+interface ProductSearchProps {
+  onProductsFound: (products: Product[]) => void;
+  onLoading: (loading: boolean) => void;
+  onError: (error: string | null) => void;
+}
+
+const ProductSearch: React.FC<ProductSearchProps> = ({ 
+  onProductsFound, 
+  onLoading, 
+  onError 
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-  const { addToCart } = usePOS();
 
-  useEffect(() => {
-    if (searchTerm.length >= 2) {
-      searchProducts();
-    } else {
-      setProducts([]);
-      setShowResults(false);
+  const searchProducts = async (term: string) => {
+    if (term.length < 2) {
+      onProductsFound([]);
+      return;
     }
-  }, [searchTerm]);
 
-  const searchProducts = async () => {
-    setLoading(true);
+    onLoading(true);
+    onError(null);
+
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('products')
-        .select('*')
-        .or(`name.ilike.%${searchTerm}%,barcode.ilike.%${searchTerm}%`)
-        .limit(10);
+        .select(`
+          *,
+          photos:product_photos (
+            photo_url,
+            is_primary
+          ),
+          discounts:product_discounts (
+            id,
+            discount:discounts (
+              id,
+              name,
+              type,
+              value,
+              active,
+              start_date,
+              end_date
+            )
+          ),
+          categories (
+            name
+          )
+        `)
+        .or(`name.ilike.%${term}%,barcode.ilike.%${term}%`)
+        .order('name')
+        .limit(8); // Limit to 8 products per search
 
-      setProducts(data || []);
-      setShowResults(true);
-    } catch (error) {
-      console.error('Error searching products:', error);
+      if (error) throw error;
+
+      // Filter out inactive discounts and check dates
+      const productsWithActiveDiscounts = (data || []).map(product => ({
+        ...product,
+        discounts: product.discounts?.filter(d => {
+          const discount = d.discount;
+          if (!discount.active) return false;
+          
+          if (discount.start_date && discount.end_date) {
+            const now = new Date();
+            const start = new Date(discount.start_date);
+            const end = new Date(discount.end_date);
+            return now >= start && now <= end;
+          }
+          
+          return true;
+        })
+      }));
+
+      onProductsFound(productsWithActiveDiscounts);
+    } catch (err) {
+      console.error('Error searching products:', err);
+      onError('Error al buscar productos');
     } finally {
-      setLoading(false);
+      onLoading(false);
     }
   };
 
-  const handleProductSelect = (product: Product) => {
-    addToCart(product);
-    setSearchTerm('');
-    setShowResults(false);
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const term = e.target.value;
+    setSearchTerm(term);
+    
+    // Use debounce to avoid too many requests
+    const timeoutId = setTimeout(() => {
+      searchProducts(term);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
   };
 
   return (
@@ -55,42 +106,11 @@ const ProductSearch: React.FC = () => {
         <input
           type="text"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={handleSearch}
           className="w-full p-3 rounded-lg focus:outline-none"
           placeholder="Buscar productos por nombre o código..."
         />
       </div>
-
-      {showResults && (
-        <div className="absolute z-10 w-full mt-1 bg-white rounded-lg shadow-lg max-h-96 overflow-y-auto">
-          {loading ? (
-            <div className="p-4 text-center text-gray-500">Buscando...</div>
-          ) : products.length > 0 ? (
-            <ul>
-              {products.map((product) => (
-                <li
-                  key={product.id}
-                  className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                  onClick={() => handleProductSelect(product)}
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-medium">{product.name}</p>
-                      <p className="text-sm text-gray-500">Código: {product.barcode}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-blue-600">${product.price.toFixed(2)}</p>
-                      <p className="text-sm text-gray-500">Stock: {product.stock}</p>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="p-4 text-center text-gray-500">No se encontraron productos</div>
-          )}
-        </div>
-      )}
     </div>
   );
 };

@@ -10,6 +10,7 @@ import Impuestos from './components/Impuestos';
 import Clientes from './components/Clientes';
 import CuentasPorPagar from './components/CuentasPorPagar';
 import Inventario from './components/Inventario';
+import BulkUpload from './components/BulkUpload';
 import Configuracion from './components/Configuracion';
 import Reportes from './components/Reportes';
 import Categorias from './components/Categorias';
@@ -41,6 +42,7 @@ function App() {
                       <Route path="/clientes" element={<Clientes />} />
                       <Route path="/cuentas-por-pagar" element={<CuentasPorPagar />} />
                       <Route path="/inventario" element={<Inventario />} />
+                      <Route path="/carga-masiva" element={<BulkUpload />} />
                       <Route path="/configuracion" element={<Configuracion />} />
                       <Route path="/reportes" element={<Reportes />} />
                       <Route path="/categorias" element={<Categorias />} />

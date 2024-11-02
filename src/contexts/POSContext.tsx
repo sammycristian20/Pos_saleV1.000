@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import Big from 'big.js';
 import { Product, CartItem, Client, Sale, PaymentDetails, Discount, FiscalDocumentType } from '../components/POS/types';
 import { useAuth } from './AuthContext';
 
@@ -7,7 +8,11 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const TAX_RATE = 0.18; // 18% ITBIS
+// Configure Big.js settings
+Big.DP = 2; // 2 decimal places
+Big.RM = Big.roundHalfUp; // Round half up
+
+const TAX_RATE = new Big('0.18'); // 18% ITBIS
 const DEFAULT_CLIENT_ID = '00000000-0000-0000-0000-000000000000'; // Consumidor Final
 
 interface POSContextType {
@@ -39,16 +44,29 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const { user } = useAuth();
 
   const calculateItemTotals = (item: CartItem): CartItem => {
-    const subtotal = Number((item.price * item.quantity).toFixed(2));
-    const tax_amount = Number((subtotal * TAX_RATE).toFixed(2));
-    const total = Number((subtotal + tax_amount).toFixed(2));
-    
-    return {
-      ...item,
-      subtotal,
-      tax_amount,
-      total
-    };
+    try {
+      const quantity = new Big(item.quantity);
+      const price = new Big(item.price);
+
+      // Calculate subtotal (price * quantity)
+      const subtotal = price.times(quantity);
+
+      // Calculate tax amount (subtotal * tax rate)
+      const tax_amount = subtotal.times(TAX_RATE);
+
+      // Calculate total (subtotal + tax)
+      const total = subtotal.plus(tax_amount);
+
+      return {
+        ...item,
+        subtotal: Number(subtotal.toFixed(2)),
+        tax_amount: Number(tax_amount.toFixed(2)),
+        total: Number(total.toFixed(2))
+      };
+    } catch (err) {
+      console.error('Error calculating item totals:', err);
+      return item;
+    }
   };
 
   const addToCart = useCallback((product: Product) => {
@@ -97,55 +115,79 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setShowPayment(false);
   }, []);
 
-  const cartSubtotal = Number(cart.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
-  const cartTax = Number(cart.reduce((sum, item) => sum + item.tax_amount, 0).toFixed(2));
+  // Calculate cart totals using Big.js
+  const cartSubtotal = Number(
+    cart.reduce((sum, item) => sum.plus(new Big(item.subtotal)), new Big(0)).toFixed(2)
+  );
+
+  const cartTax = Number(
+    cart.reduce((sum, item) => sum.plus(new Big(item.tax_amount)), new Big(0)).toFixed(2)
+  );
 
   // Calculate discount amount
-  const discountAmount = selectedDiscount
-    ? selectedDiscount.type === 'PERCENTAGE'
-      ? Number((cartSubtotal * (selectedDiscount.value / 100)).toFixed(2))
-      : Number(selectedDiscount.value.toFixed(2))
-    : 0;
+  const calculateDiscountAmount = (): number => {
+    if (!selectedDiscount) return 0;
 
-  // Apply maximum discount if set
-  const finalDiscountAmount = selectedDiscount?.max_discount_amount && discountAmount > selectedDiscount.max_discount_amount
-    ? selectedDiscount.max_discount_amount
-    : discountAmount;
+    try {
+      const subtotal = new Big(cartSubtotal);
+      const discountValue = new Big(selectedDiscount.value);
 
-  const cartTotal = Number((cartSubtotal + cartTax - finalDiscountAmount).toFixed(2));
+      let amount = selectedDiscount.type === 'PERCENTAGE'
+        ? subtotal.times(discountValue.div(100))
+        : discountValue;
+
+      // Apply maximum discount if set
+      if (selectedDiscount.max_discount_amount) {
+        const maxDiscount = new Big(selectedDiscount.max_discount_amount);
+        amount = Big.min(amount, maxDiscount);
+      }
+
+      return Number(amount.toFixed(2));
+    } catch (err) {
+      console.error('Error calculating discount:', err);
+      return 0;
+    }
+  };
+
+  const discountAmount = calculateDiscountAmount();
+
+  // Calculate final total
+  const cartTotal = Number(
+    new Big(cartSubtotal)
+      .plus(new Big(cartTax))
+      .minus(new Big(discountAmount))
+      .toFixed(2)
+  );
 
   const processSale = async (paymentDetails: PaymentDetails) => {
     if (!user) throw new Error('Usuario no autenticado');
     if (cart.length === 0) throw new Error('El carrito está vacío');
 
-    // Use the provided fiscal document type from payment details
-    const fiscalDocumentType = paymentDetails.fiscal_document_type;
-
-    const sale: Sale = {
-      customer_id: selectedClient?.id || DEFAULT_CLIENT_ID,
-      subtotal: cartSubtotal,
-      tax_amount: cartTax,
-      total_amount: cartTotal,
-      discount_amount: finalDiscountAmount,
-      discount_id: selectedDiscount?.id,
-      payment_method: paymentDetails.method,
-      amount_paid: paymentDetails.amount_tendered,
-      change_amount: paymentDetails.change_amount,
-      fiscal_document_type: fiscalDocumentType,
-      fiscal_number: paymentDetails.fiscal_number,
-      items: cart.map(item => ({
-        product_id: item.id,
-        quantity: item.quantity,
-        unit_price: item.price,
-        tax_rate: TAX_RATE,
-        tax_amount: item.tax_amount,
-        subtotal: item.subtotal,
-        total: item.total,
-        discount_amount: item.discount_amount
-      }))
-    };
-
     try {
+      const sale: Sale = {
+        customer_id: selectedClient?.id || DEFAULT_CLIENT_ID,
+        subtotal: cartSubtotal,
+        tax_amount: cartTax,
+        total_amount: cartTotal,
+        discount_amount: discountAmount,
+        discount_id: selectedDiscount?.id,
+        payment_method: paymentDetails.method,
+        amount_paid: paymentDetails.amount_tendered,
+        change_amount: paymentDetails.change_amount,
+        fiscal_document_type: paymentDetails.fiscal_document_type,
+        fiscal_number: paymentDetails.fiscal_number,
+        items: cart.map(item => ({
+          product_id: item.id,
+          quantity: item.quantity,
+          unit_price: item.price,
+          tax_rate: Number(TAX_RATE.toFixed(2)),
+          tax_amount: item.tax_amount,
+          subtotal: item.subtotal,
+          total: item.total,
+          discount_amount: item.discount_amount
+        }))
+      };
+
       // Create the sale
       const { data: saleData, error: saleError } = await supabase.rpc('create_sale', {
         sale_data: sale
@@ -203,7 +245,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     cartTotal,
     cartSubtotal,
     cartTax,
-    discountAmount: finalDiscountAmount,
+    discountAmount,
     showPayment,
     setShowPayment,
     processSale
