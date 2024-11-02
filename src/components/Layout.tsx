@@ -14,7 +14,8 @@ import {
   ShoppingCart, 
   FileText, 
   Percent,
-  Hash
+  Hash,
+  Calculator
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -32,7 +33,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-gradient-to-b from-blue-50 to-blue-100">
       <aside className="w-64 bg-white shadow-md">
         <div className="p-4 border-b">
           <p className="text-sm text-gray-600">Bienvenido,</p>
@@ -46,6 +47,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Link to="/pos" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
             <ShoppingCart className="mr-3" size={20} />
             Punto de Venta
+          </Link>
+          <Link to="/caja" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
+            <Calculator className="mr-3" size={20} />
+            Caja
           </Link>
           <Link to="/usuarios" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-200">
             <Users className="mr-3" size={20} />

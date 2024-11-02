@@ -1,13 +1,20 @@
-import React from 'react';
-import { X, Printer, Check } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { X, Printer } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/format';
 
 interface ReceiptModalProps {
   invoice: any;
   onClose: () => void;
+  autoPrint?: boolean;
 }
 
-const ReceiptModal: React.FC<ReceiptModalProps> = ({ invoice, onClose }) => {
+const ReceiptModal: React.FC<ReceiptModalProps> = ({ invoice, onClose, autoPrint = false }) => {
+  useEffect(() => {
+    if (autoPrint) {
+      handlePrint();
+    }
+  }, []);
+
   const handlePrint = () => {
     const printWindow = window.open('', '', 'width=800,height=600');
     if (!printWindow) {
@@ -19,6 +26,13 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ invoice, onClose }) => {
       @page {
         size: 80mm auto;
         margin: 0;
+      }
+      @media print {
+        body {
+          margin: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
       }
       body {
         width: 80mm;
@@ -81,7 +95,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ invoice, onClose }) => {
           <div class="divider"></div>
           
           <div>
-            <div>Factura #: ${invoice.id.slice(0, 8)}</div>
+            <div>NCF: ${invoice.fiscal_number || 'N/A'}</div>
             <div>Fecha: ${formatDate(invoice.created_at)}</div>
             ${invoice.customer ? `
               <div>Cliente: ${invoice.customer.name}</div>
@@ -99,6 +113,12 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ invoice, onClose }) => {
                   <span>${item.quantity} x ${formatCurrency(item.unit_price)}</span>
                   <span>${formatCurrency(item.total)}</span>
                 </div>
+                ${item.discount_amount > 0 ? `
+                  <div class="item-details">
+                    <span>Descuento</span>
+                    <span>-${formatCurrency(item.discount_amount)}</span>
+                  </div>
+                ` : ''}
               </div>
             `).join('')}
           </div>
@@ -110,6 +130,12 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ invoice, onClose }) => {
               <span>Subtotal:</span>
               <span>${formatCurrency(invoice.subtotal)}</span>
             </div>
+            ${invoice.discount_amount > 0 ? `
+              <div class="total-line">
+                <span>Descuento:</span>
+                <span>-${formatCurrency(invoice.discount_amount)}</span>
+              </div>
+            ` : ''}
             <div class="total-line">
               <span>ITBIS (18%):</span>
               <span>${formatCurrency(invoice.tax_amount)}</span>
@@ -144,9 +170,9 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ invoice, onClose }) => {
           <script>
             window.onload = function() {
               window.print();
-              setTimeout(function() {
+              window.onafterprint = function() {
                 window.close();
-              }, 500);
+              };
             };
           </script>
         </body>
@@ -162,10 +188,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ invoice, onClose }) => {
       <div className="bg-white rounded-lg shadow-lg w-full max-w-md">
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <Check className="w-6 h-6 text-green-500 mr-2" />
-              <h2 className="text-xl font-bold">Venta Completada</h2>
-            </div>
+            <h2 className="text-xl font-bold">Venta Completada</h2>
             <button
               onClick={onClose}
               className="text-gray-500 hover:text-gray-700 transition-colors"
@@ -178,6 +201,11 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ invoice, onClose }) => {
             <p className="text-green-700 text-center">
               La venta se ha procesado correctamente
             </p>
+            {invoice.fiscal_number && (
+              <p className="text-center mt-2">
+                <span className="font-medium">NCF:</span> {invoice.fiscal_number}
+              </p>
+            )}
           </div>
 
           <button

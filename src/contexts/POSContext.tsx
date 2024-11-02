@@ -118,15 +118,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!user) throw new Error('Usuario no autenticado');
     if (cart.length === 0) throw new Error('El carrito está vacío');
 
-    // Determine fiscal document type based on client type
-    let fiscalDocumentType: FiscalDocumentType | undefined;
-    if (selectedClient) {
-      fiscalDocumentType = selectedClient.client_type === 'BUSINESS' 
-        ? 'CREDITO_FISCAL' 
-        : 'CONSUMO';
-    } else {
-      fiscalDocumentType = 'CONSUMO'; // Default for walk-in customers
-    }
+    // Use the provided fiscal document type from payment details
+    const fiscalDocumentType = paymentDetails.fiscal_document_type;
 
     const sale: Sale = {
       customer_id: selectedClient?.id || DEFAULT_CLIENT_ID,
@@ -139,6 +132,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       amount_paid: paymentDetails.amount_tendered,
       change_amount: paymentDetails.change_amount,
       fiscal_document_type: fiscalDocumentType,
+      fiscal_number: paymentDetails.fiscal_number,
       items: cart.map(item => ({
         product_id: item.id,
         quantity: item.quantity,

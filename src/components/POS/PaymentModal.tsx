@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, CreditCard, DollarSign, Banknote, FileText } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import { X, DollarSign, CreditCard, Banknote, FileText } from 'lucide-react';
 import { usePOS } from '../../contexts/POSContext';
-import { PaymentDetails, FiscalDocumentType } from './types';
-import ReceiptModal from './ReceiptModal';
+import { useCashRegister } from '../../contexts/CashRegisterContext';
+import { formatCurrency } from '../../utils/format';
+import type { FiscalDocumentType } from './types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -11,36 +12,26 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface PaymentModalProps {
   onClose: () => void;
+  onComplete: (sale: any) => void;
 }
 
-interface FiscalSequence {
-  id: string;
-  document_type: FiscalDocumentType;
-  current_prefix: string;
-  last_number: number;
-}
-
-const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
-  const { cartTotal, processSale, selectedClient } = usePOS();
-  const [paymentMethod, setPaymentMethod] = useState<PaymentDetails['method']>('CASH');
+const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onComplete }) => {
+  const { cartTotal, selectedClient, processSale } = usePOS();
+  const { register, refreshRegister } = useCashRegister();
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'TRANSFER' | 'CREDIT'>('CASH');
   const [amountTendered, setAmountTendered] = useState<string>(cartTotal.toString());
   const [referenceNumber, setReferenceNumber] = useState('');
   const [authorizationCode, setAuthorizationCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [completedSale, setCompletedSale] = useState<any>(null);
-  const [fiscalSequences, setFiscalSequences] = useState<FiscalSequence[]>([]);
+  const [fiscalSequences, setFiscalSequences] = useState<any[]>([]);
   const [selectedFiscalType, setSelectedFiscalType] = useState<FiscalDocumentType | ''>('');
 
   useEffect(() => {
-    fetchFiscalSequences();
-  }, []);
-
-  useEffect(() => {
-    // Only set CONSUMO as default if there's no selected client
     if (!selectedClient) {
       setSelectedFiscalType('CONSUMO');
     }
+    fetchFiscalSequences();
   }, [selectedClient]);
 
   const fetchFiscalSequences = async () => {
@@ -59,6 +50,82 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
     }
   };
 
+  const validatePayment = () => {
+    if (!selectedFiscalType) {
+      throw new Error('Debe seleccionar un tipo de comprobante fiscal');
+    }
+
+    if (paymentMethod === 'CASH') {
+      if (!register) {
+        throw new Error('No hay una caja abierta para recibir pagos en efectivo');
+      }
+
+      const tenderedAmount = Number(amountTendered);
+      if (isNaN(tenderedAmount) || tenderedAmount < cartTotal) {
+        throw new Error('El monto recibido es menor al total');
+      }
+    }
+
+    if ((paymentMethod === 'CARD' || paymentMethod === 'TRANSFER') && !referenceNumber) {
+      throw new Error('El número de referencia es requerido');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (processing) return;
+
+    setError(null);
+    setProcessing(true);
+
+    try {
+      // Validate payment details
+      validatePayment();
+
+      const paymentDetails = {
+        method: paymentMethod,
+        amount_tendered: Number(amountTendered),
+        change_amount: Math.max(0, Number(amountTendered) - cartTotal),
+        reference_number: referenceNumber || undefined,
+        authorization_code: authorizationCode || undefined,
+        fiscal_document_type: selectedFiscalType,
+        fiscal_number: ''
+      };
+
+      const result = await processSale(paymentDetails);
+
+      if (!result) {
+        throw new Error('Error al procesar la venta');
+      }
+
+      // Register cash transaction if applicable
+      if (paymentMethod === 'CASH' && register) {
+        const { error: transactionError } = await supabase.rpc('add_register_transaction', {
+          p_register_id: register.id,
+          p_type: 'SALE',
+          p_amount: cartTotal,
+          p_payment_method: 'CASH',
+          p_reference_id: result.id,
+          p_notes: `Venta #${result.fiscal_number || result.id}`
+        });
+
+        if (transactionError) {
+          console.error('Error registering cash transaction:', transactionError);
+          throw transactionError;
+        }
+
+        // Update register totals
+        await refreshRegister();
+      }
+
+      onComplete(result);
+    } catch (err) {
+      console.error('Error processing payment:', err);
+      setError(err instanceof Error ? err.message : 'Error al procesar el pago');
+      setProcessing(false);
+    }
+  };
+
   const getFiscalTypeLabel = (type: FiscalDocumentType): string => {
     const labels: Record<FiscalDocumentType, string> = {
       'CREDITO_FISCAL': 'Crédito Fiscal (31)',
@@ -72,49 +139,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
     };
     return labels[type] || type;
   };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setProcessing(true);
-
-    try {
-      if (!selectedFiscalType) {
-        throw new Error('Debe seleccionar un tipo de comprobante fiscal');
-      }
-
-      if (paymentMethod === 'CASH' && Number(amountTendered) < cartTotal) {
-        throw new Error('El monto recibido es menor al total');
-      }
-
-      const paymentDetails: PaymentDetails = {
-        method: paymentMethod,
-        amount_tendered: Number(amountTendered),
-        change_amount: Math.max(0, Number(amountTendered) - cartTotal),
-        reference_number: referenceNumber || undefined,
-        authorization_code: authorizationCode || undefined,
-        fiscal_document_type: selectedFiscalType
-      };
-
-      const result = await processSale(paymentDetails);
-      setCompletedSale(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al procesar el pago');
-      setProcessing(false);
-    }
-  };
-
-  if (completedSale) {
-    return (
-      <ReceiptModal
-        invoice={completedSale}
-        onClose={() => {
-          setCompletedSale(null);
-          onClose();
-        }}
-      />
-    );
-  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -136,8 +160,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Tipo de Comprobante Fiscal
             </label>
@@ -160,7 +184,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
             </select>
           </div>
 
-          <div className="mb-4">
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Método de Pago
             </label>
@@ -171,8 +195,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                 className={`p-3 flex items-center justify-center rounded-lg border ${
                   paymentMethod === 'CASH'
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : !register
+                    ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
                     : 'border-gray-300 hover:border-gray-400'
                 }`}
+                disabled={processing || !register}
+                title={!register ? 'Debe abrir la caja para recibir pagos en efectivo' : undefined}
               >
                 <DollarSign size={20} className="mr-2" />
                 Efectivo
@@ -185,6 +213,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                     : 'border-gray-300 hover:border-gray-400'
                 }`}
+                disabled={processing}
               >
                 <CreditCard size={20} className="mr-2" />
                 Tarjeta
@@ -197,6 +226,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                     : 'border-gray-300 hover:border-gray-400'
                 }`}
+                disabled={processing}
               >
                 <Banknote size={20} className="mr-2" />
                 Transferencia
@@ -209,6 +239,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                     : 'border-gray-300 hover:border-gray-400'
                 }`}
+                disabled={processing}
               >
                 <FileText size={20} className="mr-2" />
                 Crédito
@@ -216,39 +247,44 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
             </div>
           </div>
 
-          <div className="mb-4">
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Total a Pagar
             </label>
             <div className="text-2xl font-bold text-gray-900">
-              ${cartTotal.toFixed(2)}
+              {formatCurrency(cartTotal)}
             </div>
           </div>
 
           {paymentMethod === 'CASH' && (
             <>
-              <div className="mb-4">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Monto Recibido
                 </label>
-                <input
-                  type="number"
-                  value={amountTendered}
-                  onChange={(e) => setAmountTendered(e.target.value)}
-                  className="w-full p-2 border rounded-lg"
-                  min={cartTotal}
-                  step="0.01"
-                  required
-                  disabled={processing}
-                />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="text-gray-400" size={20} />
+                  </div>
+                  <input
+                    type="number"
+                    value={amountTendered}
+                    onChange={(e) => setAmountTendered(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    min={cartTotal}
+                    step="0.01"
+                    required
+                    disabled={processing}
+                  />
+                </div>
               </div>
 
-              <div className="mb-4">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Cambio
                 </label>
                 <div className="text-xl font-bold text-green-600">
-                  ${Math.max(0, Number(amountTendered) - cartTotal).toFixed(2)}
+                  {formatCurrency(Math.max(0, Number(amountTendered) - cartTotal))}
                 </div>
               </div>
             </>
@@ -256,7 +292,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
 
           {(paymentMethod === 'CARD' || paymentMethod === 'TRANSFER') && (
             <>
-              <div className="mb-4">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Número de Referencia
                 </label>
@@ -264,12 +300,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                   type="text"
                   value={referenceNumber}
                   onChange={(e) => setReferenceNumber(e.target.value)}
-                  className="w-full p-2 border rounded-lg"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                   disabled={processing}
                 />
               </div>
-              <div className="mb-4">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Código de Autorización
                 </label>
@@ -277,7 +313,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
                   type="text"
                   value={authorizationCode}
                   onChange={(e) => setAuthorizationCode(e.target.value)}
-                  className="w-full p-2 border rounded-lg"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                   disabled={processing}
                 />
@@ -287,7 +323,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
 
           <button
             type="submit"
-            disabled={processing || !selectedFiscalType}
+            disabled={processing || !selectedFiscalType || (paymentMethod === 'CASH' && !register)}
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg flex items-center justify-center hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400"
           >
             {processing ? (

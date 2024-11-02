@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { FileText, Search, AlertCircle, Ban, Eye } from 'lucide-react';
+import { FileText, Search, AlertCircle, Ban, Eye, Printer } from 'lucide-react';
 import InvoiceDetails from './InvoiceDetails';
+import ReceiptModal from '../POS/ReceiptModal';
 import { Invoice } from '../POS/types';
 import { formatCurrency, formatDate } from '../../utils/format';
 
@@ -14,6 +15,7 @@ const Facturas: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
@@ -215,7 +217,7 @@ const Facturas: React.FC = () => {
               </tr>
             ) : (
               filteredInvoices.map((invoice) => (
-                <tr key={invoice.id} className="border-t hover:bg-gray-50">
+                <tr key={invoice.id} className="border-t">
                   <td className="p-3">
                     <div className="flex items-center">
                       <FileText size={16} className="mr-2 text-gray-400" />
@@ -274,6 +276,16 @@ const Facturas: React.FC = () => {
                       >
                         <Eye size={20} />
                       </button>
+                      <button
+                        onClick={() => {
+                          setSelectedInvoice(invoice);
+                          setShowReceipt(true);
+                        }}
+                        className="p-1 text-green-500 hover:text-green-700 rounded-full hover:bg-green-50"
+                        title="Ver recibo"
+                      >
+                        <Printer size={20} />
+                      </button>
                       {invoice.status === 'PAID' && (
                         <button
                           onClick={() => handleCancelInvoice(invoice)}
@@ -292,7 +304,7 @@ const Facturas: React.FC = () => {
         </table>
       </div>
 
-      {selectedInvoice && (
+      {selectedInvoice && !showReceipt && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <InvoiceDetails
@@ -302,6 +314,16 @@ const Facturas: React.FC = () => {
             />
           </div>
         </div>
+      )}
+
+      {showReceipt && selectedInvoice && (
+        <ReceiptModal
+          invoice={selectedInvoice}
+          onClose={() => {
+            setShowReceipt(false);
+            setSelectedInvoice(null);
+          }}
+        />
       )}
     </div>
   );

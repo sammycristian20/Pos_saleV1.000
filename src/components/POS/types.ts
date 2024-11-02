@@ -1,4 +1,12 @@
-import { Product } from './types';
+export interface Client {
+  id: string;
+  name: string;
+  client_type: 'PERSONAL' | 'BUSINESS';
+  document: string;
+  document_type: string;
+  phone?: string;
+  email?: string;
+}
 
 export type FiscalDocumentType = 
   | 'CREDITO_FISCAL'
@@ -9,6 +17,18 @@ export type FiscalDocumentType =
   | 'GASTOS_MENORES'
   | 'REGIMENES_ESPECIALES'
   | 'GUBERNAMENTAL';
+
+export interface Product {
+  id: string;
+  name: string;
+  price: number;
+  stock: number;
+  barcode: string;
+  photos?: {
+    photo_url: string;
+    is_primary: boolean;
+  }[];
+}
 
 export interface Discount {
   id: string;
