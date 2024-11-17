@@ -370,55 +370,65 @@ const Inventario: React.FC = () => {
         </form>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {loading && !showForm ? (
-          <div className="col-span-full flex justify-center items-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            <span className="ml-2">Cargando productos...</span>
-          </div>
-        ) : productos.length === 0 ? (
-          <div className="col-span-full text-center py-8 text-gray-500">
-            No hay productos registrados
-          </div>
-        ) : (
-          productos.map((producto) => (
-            <div key={producto.id} className="bg-white p-6 rounded-lg shadow-md">
-              {producto.photos && producto.photos.length > 0 && (
-                <img 
-                  src={producto.photos[0].photo_url}
-                  alt={producto.name}
-                  className="w-full h-48 object-cover mb-4 rounded"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=No+Image';
-                  }}
-                />
-              )}
-              <h3 className="text-xl font-bold mb-2">{producto.name}</h3>
-              <p className="text-gray-600 mb-2">Código: {producto.barcode}</p>
-              <p className="text-gray-600 mb-2">Precio: {formatCurrency(producto.price)}</p>
-              <p className="text-gray-600 mb-2">Stock: {producto.stock}</p>
-              <p className="text-gray-600 mb-4">
-                Categoría: {(producto as any).categories?.name || 'N/A'}
-              </p>
-              <div className="flex justify-end">
-                <button 
-                  className="text-blue-500 hover:text-blue-700 mr-2"
-                  onClick={() => handleEdit(producto)}
-                  disabled={loading}
-                >
-                  <Edit size={20} />
-                </button>
-                <button 
-                  className="text-red-500 hover:text-red-700"
-                  onClick={() => handleDelete(producto.id)}
-                  disabled={loading}
-                >
-                  <Trash2 size={20} />
-                </button>
-              </div>
-            </div>
-          ))
-        )}
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white border rounded-lg">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoría</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {loading && !showForm ? (
+              <tr>
+                <td colSpan={6} className="px-6 py-4 text-center">
+                  <div className="flex justify-center items-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    <span className="ml-2">Cargando productos...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : productos.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  No hay productos registrados
+                </td>
+              </tr>
+            ) : (
+              productos.map((producto) => (
+                <tr key={producto.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">{producto.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{producto.barcode}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{formatCurrency(producto.price)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{producto.stock}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {(producto as any).categories?.name || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <button 
+                      className="text-blue-500 hover:text-blue-700 mr-2"
+                      onClick={() => handleEdit(producto)}
+                      disabled={loading}
+                    >
+                      <Edit size={20} />
+                    </button>
+                    <button 
+                      className="text-red-500 hover:text-red-700"
+                      onClick={() => handleDelete(producto.id)}
+                      disabled={loading}
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {showBarcodePrinting && (

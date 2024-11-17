@@ -20,6 +20,7 @@ import Facturas from './components/Facturas';
 import Descuentos from './components/Descuentos';
 import Secuencias from './components/Secuencias';
 import CashRegister from './components/CashRegister';
+import Vendedores from './components/Vendedores';
 
 function App() {
   return (
@@ -49,6 +50,7 @@ function App() {
                       <Route path="/facturas" element={<Facturas />} />
                       <Route path="/descuentos" element={<Descuentos />} />
                       <Route path="/secuencias" element={<Secuencias />} />
+                      <Route path="/vendedores" element={<Vendedores />} />
                     </Routes>
                   </Layout>
                 </PrivateRoute>

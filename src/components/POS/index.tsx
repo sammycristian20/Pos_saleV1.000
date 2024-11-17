@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { POSProvider } from '../../contexts/POSContext';
 import { useCashRegister } from '../../contexts/CashRegisterContext';
 import ProductSearch from './ProductSearch';
 import ProductGrid from './ProductGrid';
 import Cart from './Cart';
+import CategoryTabs from './CategoryTabs';
 import ClientSearch from './ClientSearch';
 import PaymentModal from './PaymentModal';
 import TransactionList from '../CashRegister/TransactionList';
-import { Sale, Product } from './types';
-import { Receipt, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Product } from './types';
+import { AlertCircle, ChevronDown, ChevronUp, Receipt } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -18,17 +19,68 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const POS: React.FC = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [lastSale, setLastSale] = useState<Sale | null>(null);
+  const [lastSale, setLastSale] = useState(null);
   const { register, loading, error, refreshRegister } = useCashRegister();
   const [showTransactions, setShowTransactions] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [activeCategory, setActiveCategory] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('id, name')
+        .eq('active', true)
+        .order('name');
+
+      if (error) throw error;
+      setCategories(data || []);
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+      setSearchError('Error al cargar las categorías');
+    }
+  };
+
+  const handleCategoryChange = async (categoryId: string) => {
+    setSearchLoading(true);
+    setSearchError(null);
+    try {
+      let query = supabase
+        .from('products')
+        .select(`
+          *,
+          photos:product_photos (
+            photo_url,
+            is_primary
+          )
+        `)
+        .eq('active', true);
+
+      if (categoryId) {
+        query = query.eq('category_id', categoryId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (err) {
+      console.error('Error fetching products:', err);
+      setSearchError('Error al cargar los productos');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
 
   const handleSaleComplete = async (sale: any) => {
     try {
       if (register && sale.payment_method === 'CASH') {
-        // Register the cash sale in cash_register_transactions
         const { error: transactionError } = await supabase.rpc('add_register_transaction', {
           p_register_id: register.id,
           p_type: 'SALE',
@@ -38,12 +90,7 @@ const POS: React.FC = () => {
           p_notes: `Venta #${sale.fiscal_number || sale.id}`
         });
 
-        if (transactionError) {
-          console.error('Error registering cash transaction:', transactionError);
-          throw transactionError;
-        }
-
-        // Refresh register data to update totals
+        if (transactionError) throw transactionError;
         await refreshRegister();
       }
 
@@ -57,7 +104,7 @@ const POS: React.FC = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
@@ -83,7 +130,7 @@ const POS: React.FC = () => {
         </p>
         <Link
           to="/caja"
-          className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+          className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
         >
           Ir a Caja Registradora
         </Link>
@@ -105,6 +152,16 @@ const POS: React.FC = () => {
                 onError={setSearchError}
               />
             </div>
+
+            <CategoryTabs
+              categories={categories}
+              activeCategory={activeCategory}
+              onCategoryChange={(categoryId) => {
+                setActiveCategory(categoryId);
+                handleCategoryChange(categoryId);
+              }}
+            />
+
             <ProductGrid 
               products={products}
               loading={searchLoading}
